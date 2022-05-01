@@ -1,2 +1,2 @@
 gcc heartbeat.c -o trab -lpthread -w
-./trab wlp2s0
+./trab wlp0s20f3

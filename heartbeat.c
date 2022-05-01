@@ -176,19 +176,25 @@ void startHeartbeat()
 
 void listaHosts()
 {	
-	printf("------ LIST DE HOSTS ------\n");
+	time_t c_time;
+	printf("------ LIST DE HOSTS ATIVOS ------\n");
 	for (int i = 0; i < len_hosts; i++)
 	{
-		printf("%s | %s\n", arr_hosts[i].hostname, ctime(&arr_hosts[i].last_beat));
+		time(&c_time);
+		if(difftime(c_time, arr_hosts[i].last_beat) <= 15){
+			printf("%s | %s\n", arr_hosts[i].hostname, ctime(&arr_hosts[i].last_beat));
+		}
 	}
 	printf("------ FIM ------\n");
 }
 
 char *procuraEnderecoDestino(char *nome)
 {
+	time_t c_time;
 	for (int i = 0; i < len_hosts; i++)
 	{
-		if (strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
+		time(&c_time);
+		if ( difftime(c_time, arr_hosts[i].last_beat) <= 15 && strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
 		{
 			return arr_hosts[i].mac_addr;
 		}
@@ -214,7 +220,7 @@ void waitingInput()
 
 			if (enderecoDestino == NULL)
 			{
-				printf("Este destino nao existe ou nao eh valido.\n");
+				printf("Este destino nao existe ou esta valido.\n");
 				continue;
 			}
 

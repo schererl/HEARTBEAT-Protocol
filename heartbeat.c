@@ -30,7 +30,7 @@ struct host_info
 struct host_info arr_hosts[100];
 uint8_t len_hosts = 0;
 
-void adicionaNovoHost(char *hostName, char *mac)
+void addNewHost(char *hostName, char *mac)
 {
 	memcpy(arr_hosts[len_hosts].hostname, hostName, sizeof(arr_hosts[len_hosts].hostname));
 	time(&arr_hosts[len_hosts].last_beat);
@@ -85,10 +85,10 @@ void *recvRaw(void *param)
 				// Se recebeu um heartbeat e nao achou na tabela atual, significa que o host atual foi iniciado depois da msg
 				// de start do host que enviou este heartbeat, entao devemos adiciona-lo a tabela de hosts.
 				if (h_index < 0)
-					adicionaNovoHost(raw->pulse.hostname, raw->ethernet.src_addr);
+					addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
 			}
 			else // adiciona o novo host no array (START)
-				adicionaNovoHost(raw->pulse.hostname, raw->ethernet.src_addr);
+				addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
 		}
 	}
 }
@@ -174,7 +174,7 @@ void startHeartbeat()
 	}
 }
 
-void listaHosts()
+void getHostsList()
 {	
 	time_t c_time;
 	printf("------ LIST DE HOSTS ATIVOS ------\n");
@@ -188,7 +188,7 @@ void listaHosts()
 	printf("------ FIM ------\n");
 }
 
-char *procuraEnderecoDestino(char *nome)
+char *searchDestAddr(char *nome)
 {
 	time_t c_time;
 	for (int i = 0; i < len_hosts; i++)
@@ -216,9 +216,9 @@ void waitingInput()
 			printf("Digite o nome do destino.\n");
 			scanf("%s", dst);
 
-			char *enderecoDestino = procuraEnderecoDestino(dst);
+			char *addrDest = searchDestAddr(dst);
 
-			if (enderecoDestino == NULL)
+			if (addrDest == NULL)
 			{
 				printf("Este destino nao existe ou esta valido.\n");
 				continue;
@@ -228,10 +228,10 @@ void waitingInput()
 			printf("Digite sua mensagem.\n");
 			scanf("%s", buff);
 
-			sendTalk(buff, enderecoDestino);
+			sendTalk(buff, addrDest);
 		}
 		else if (strcmp(opt, "list") == 0)
-			listaHosts();
+			getHostsList();
 	}
 }
 

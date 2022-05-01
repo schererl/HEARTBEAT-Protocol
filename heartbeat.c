@@ -1,0 +1,258 @@
+#include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <net/if.h>
+#include <netinet/ether.h>
+#include <unistd.h>
+
+#include "raw.h"
+#include "pthread.h"
+#include <time.h>
+char this_mac[6];
+char this_hostname[16];
+
+char bcast_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+char ifName[IFNAMSIZ];
+
+struct host_info
+{
+	char hostname[16];
+	uint8_t mac_addr[6];
+	time_t last_beat;
+};
+
+struct host_info arr_hosts[100];
+uint8_t len_hosts = 0;
+
+void adicionaNovoHost(char *hostName, char *mac)
+{
+	memcpy(arr_hosts[len_hosts].hostname, hostName, sizeof(arr_hosts[len_hosts].hostname));
+	time(&arr_hosts[len_hosts].last_beat);
+	memcpy(arr_hosts[len_hosts].mac_addr, mac, sizeof(arr_hosts[len_hosts].mac_addr));
+
+	len_hosts++;
+}
+
+void *recvRaw(void *param)
+{
+	struct ifreq ifopts;
+	int sockfd;
+
+	uint8_t raw_buffer[ETH_LEN];
+	struct eth_frame_s *raw = (struct eth_frame_s *)&raw_buffer;
+
+	/* Open RAW socket */
+	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
+		perror("socket");
+
+	/* Set interface to promiscuous mode */
+	strncpy(ifopts.ifr_name, ifName, IFNAMSIZ - 1);
+	ioctl(sockfd, SIOCGIFFLAGS, &ifopts);
+	ifopts.ifr_flags |= IFF_PROMISC;
+	ioctl(sockfd, SIOCSIFFLAGS, &ifopts);
+
+	/* End of configuration. Now we can receive data using raw sockets. */
+	while (1)
+	{
+		recvfrom(sockfd, raw_buffer, ETH_LEN, 0, NULL, NULL);
+
+		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
+		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && strcmp(raw->ethernet.src_addr, this_mac) == 0)
+		{
+			if (raw->pulse.type == TYPE_TALK)
+			{
+				printf("Talk from %s: %s\n", raw->pulse.hostname, raw->pulse.talk_msg);
+			}
+			else if (raw->pulse.type == TYPE_HEARTBEAT)
+			{
+				int h_index = -1;
+				for (int i = 0; i < len_hosts; i++)
+				{
+					if (strncmp(arr_hosts[i].hostname, raw->pulse.hostname, sizeof(raw->pulse.hostname)) == 0)
+					{
+						time(&arr_hosts[i].last_beat);
+						h_index = i;
+						break;
+					}
+				}
+
+				// Se recebeu um heartbeat e nao achou na tabela atual, significa que o host atual foi iniciado depois da msg
+				// de start do host que enviou este heartbeat, entao devemos adiciona-lo a tabela de hosts.
+				if (h_index < 0)
+					adicionaNovoHost(raw->pulse.hostname, raw->ethernet.src_addr);
+			}
+			else // adiciona o novo host no array (START)
+				adicionaNovoHost(raw->pulse.hostname, raw->ethernet.src_addr);
+		}
+	}
+}
+
+int sendRaw(char type, char *data, char *dst)
+{
+	struct ifreq if_idx, if_mac, ifopts;
+	struct sockaddr_ll socket_address;
+	int sockfd, numbytes;
+
+	uint8_t raw_buffer[ETH_LEN];
+	struct eth_frame_s *raw = (struct eth_frame_s *)&raw_buffer;
+
+	/* Open RAW socket */
+	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
+		perror("socket");
+
+	/* Set interface to promiscuous mode */
+	strncpy(ifopts.ifr_name, ifName, IFNAMSIZ - 1);
+	ioctl(sockfd, SIOCGIFFLAGS, &ifopts);
+	ifopts.ifr_flags |= IFF_PROMISC;
+	ioctl(sockfd, SIOCSIFFLAGS, &ifopts);
+
+	/* Get the index of the interface */
+	memset(&if_idx, 0, sizeof(struct ifreq));
+	strncpy(if_idx.ifr_name, ifName, IFNAMSIZ - 1);
+	if (ioctl(sockfd, SIOCGIFINDEX, &if_idx) < 0)
+		perror("SIOCGIFINDEX");
+	socket_address.sll_ifindex = if_idx.ifr_ifindex;
+	socket_address.sll_halen = ETH_ALEN;
+
+	/* Get the MAC address of the interface */
+	memset(&if_mac, 0, sizeof(struct ifreq));
+	strncpy(if_mac.ifr_name, ifName, IFNAMSIZ - 1);
+	if (ioctl(sockfd, SIOCGIFHWADDR, &if_mac) < 0)
+		perror("SIOCGIFHWADDR");
+	memcpy(this_mac, if_mac.ifr_hwaddr.sa_data, 6);
+
+	/* fill the Ethernet frame header */
+	memcpy(raw->ethernet.dst_addr, dst, 6);
+	memcpy(raw->ethernet.src_addr, this_mac, 6);
+	raw->ethernet.eth_type = htons(ETHER_TYPE);
+
+	/* fill pulse data */
+	raw->pulse.type = type;
+
+	strncpy(raw->pulse.hostname, this_hostname, sizeof(this_hostname));
+	if (data != NULL)
+	{
+		memcpy(raw->pulse.talk_msg, data, sizeof(raw->pulse.talk_msg));
+	}
+
+	/* Send it.. */
+	memcpy(socket_address.sll_addr, dst, 6);
+	if (sendto(sockfd, raw_buffer, sizeof(struct eth_hdr_s) + sizeof(struct pulse_hdr_s), 0,
+			   (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll)) < 0)
+		printf("Send failed\n");
+
+	return 0;
+}
+
+int sendStart()
+{
+	return sendRaw(TYPE_START, NULL, bcast_mac);
+}
+
+int sendHB()
+{
+	return sendRaw(TYPE_HEARTBEAT, NULL, bcast_mac);
+}
+
+int sendTalk(char *data, char *dst_mac)
+{
+	return sendRaw(TYPE_TALK, data, dst_mac);
+}
+
+void startHeartbeat()
+{
+	while (1)
+	{
+		sleep(5);
+		sendHB();
+	}
+}
+
+void listaHosts()
+{	
+	printf("------ LIST DE HOSTS ------\n");
+	for (int i = 0; i < len_hosts; i++)
+	{
+		printf("%s | %s\n", arr_hosts[i].hostname, ctime(&arr_hosts[i].last_beat));
+	}
+	printf("------ FIM ------\n");
+}
+
+char *procuraEnderecoDestino(char *nome)
+{
+	for (int i = 0; i < len_hosts; i++)
+	{
+		if (strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
+		{
+			return arr_hosts[i].mac_addr;
+		}
+	}
+
+	return NULL;
+}
+
+void waitingInput()
+{
+	char opt[4];
+	while (1)
+	{
+		printf("Digite 'talk' para enviar uma mensagem, ou 'list' para listar hosts.\n");
+		scanf("%s", opt);
+		if (strcmp(opt, "talk") == 0)
+		{
+			char dst[16];
+			printf("Digite o nome do destino.\n");
+			scanf("%s", dst);
+
+			char *enderecoDestino = procuraEnderecoDestino(dst);
+
+			if (enderecoDestino == NULL)
+			{
+				printf("Este destino nao existe ou nao eh valido.\n");
+				continue;
+			}
+
+			char buff[32];
+			printf("Digite sua mensagem.\n");
+			scanf("%s", buff);
+
+			sendTalk(buff, enderecoDestino);
+		}
+		else if (strcmp(opt, "list") == 0)
+			listaHosts();
+	}
+}
+
+void getHostname()
+{
+	gethostname(this_hostname, sizeof(this_hostname) - 1);
+}
+
+int main(int argc, char *argv[])
+{
+	pthread_t th_recv, th_waitInput, th_hearBeat;
+
+	/* Get interface name */
+	if (argc > 1)
+		strcpy(ifName, argv[1]);
+	else
+		strcpy(ifName, DEFAULT_IF);
+
+	getHostname();
+
+	sendStart();
+
+	pthread_create(&th_recv, NULL, recvRaw, NULL);
+	pthread_create(&th_waitInput, NULL, waitingInput, NULL);
+	pthread_create(&th_hearBeat, NULL, startHeartbeat, NULL);
+
+	pthread_join(th_waitInput, NULL);
+
+	return 0;
+}

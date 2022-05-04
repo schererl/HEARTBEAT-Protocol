@@ -14,7 +14,7 @@
 #include "raw.h"
 #include "pthread.h"
 #include <time.h>
-char this_mac[6];
+uint8_t this_mac[6];
 char this_hostname[16];
 
 char bcast_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -61,9 +61,9 @@ void *recvRaw(void *param)
 	while (1)
 	{
 		recvfrom(sockfd, raw_buffer, ETH_LEN, 0, NULL, NULL);
-
+		
 		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
-		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && strcmp(raw->ethernet.src_addr, this_mac) == 0)
+		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && memcmp(raw->ethernet.src_addr, this_mac, sizeof(this_mac)) != 0)
 		{
 			if (raw->pulse.type == TYPE_TALK)
 			{

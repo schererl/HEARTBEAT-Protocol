@@ -9,7 +9,7 @@ struct eth_hdr_s {
 };
 
 
-struct pulse_hdr_s {
+struct heartbeat_hdr_s {
 	uint8_t type; // 1: START | 2: HEARTBEAT | 3: TALK
 	char hostname[16];
 	char talk_msg[32];
@@ -18,7 +18,7 @@ struct pulse_hdr_s {
 
 struct eth_frame_s {
 	struct eth_hdr_s ethernet;
-	struct pulse_hdr_s pulse;
+	struct heartbeat_hdr_s heartbeat;
 };
 
 

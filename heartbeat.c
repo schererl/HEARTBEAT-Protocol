@@ -79,18 +79,18 @@ int sendRaw(char type, char *data, char *dst)
 	memcpy(raw->ethernet.src_addr, this_mac, 6);
 	raw->ethernet.eth_type = htons(ETHER_TYPE);
 
-	/* fill pulse data */
-	raw->pulse.type = type;
+	/* fill heartbeat data */
+	raw->heartbeat.type = type;
 
-	strncpy(raw->pulse.hostname, this_hostname, sizeof(this_hostname));
+	strncpy(raw->heartbeat.hostname, this_hostname, sizeof(this_hostname));
 	if (data != NULL)
 	{
-		memcpy(raw->pulse.talk_msg, data, sizeof(raw->pulse.talk_msg));
+		memcpy(raw->heartbeat.talk_msg, data, sizeof(raw->heartbeat.talk_msg));
 	}
 
 	/* Send it.. */
 	memcpy(socket_address.sll_addr, dst, 6);
-	if (sendto(sockfd, raw_buffer, sizeof(struct eth_hdr_s) + sizeof(struct pulse_hdr_s), 0,
+	if (sendto(sockfd, raw_buffer, sizeof(struct eth_hdr_s) + sizeof(struct heartbeat_hdr_s), 0,
 			   (struct sockaddr *)&socket_address, sizeof(struct sockaddr_ll)) < 0)
 		printf("Send failed\n");
 
@@ -124,16 +124,16 @@ void *recvRaw(void *param)
 		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
 		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && memcmp(raw->ethernet.src_addr, this_mac, sizeof(this_mac)) != 0)
 		{
-			if (raw->pulse.type == TYPE_TALK)
+			if (raw->heartbeat.type == TYPE_TALK)
 			{
-				printf("Talk from %s: %s\n", raw->pulse.hostname, raw->pulse.talk_msg);
+				printf("Talk from %s: %s\n", raw->heartbeat.hostname, raw->heartbeat.talk_msg);
 			}
-			else if (raw->pulse.type == TYPE_HEARTBEAT)
+			else if (raw->heartbeat.type == TYPE_HEARTBEAT)
 			{
 				int h_index = -1;
 				for (int i = 0; i < len_hosts; i++)
 				{
-					if (strncmp(arr_hosts[i].hostname, raw->pulse.hostname, sizeof(raw->pulse.hostname)) == 0)
+					if (strncmp(arr_hosts[i].hostname, raw->heartbeat.hostname, sizeof(raw->heartbeat.hostname)) == 0)
 					{
 						time(&arr_hosts[i].last_beat);
 						h_index = i;
@@ -144,11 +144,11 @@ void *recvRaw(void *param)
 				// Se recebeu um heartbeat e nao achou na tabela atual, significa que o host atual foi iniciado depois da msg
 				// de start do host que enviou este heartbeat, entao devemos adiciona-lo a tabela de hosts.
 				if (h_index < 0)
-					addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
+					addNewHost(raw->heartbeat.hostname, raw->ethernet.src_addr);
 			}
 			else // adiciona o novo host no array (START)
 			{
-				addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
+				addNewHost(raw->heartbeat.hostname, raw->ethernet.src_addr);
 				sendRaw(TYPE_HEARTBEAT, NULL, raw->ethernet.src_addr);
 			} 
 		}

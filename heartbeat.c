@@ -268,3 +268,11 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
+// sudo docker cp core:/root/.coregui/xmls/t1.xml ~/Documents/pucrs/labredes/HEARTBEAT-Protocol/t1.xml
+//  sudo docker cp heartbeat.c core:/tmp/pycore.1/n1.conf/heartbeat.c
+//  sudo docker cp heartbeat.c core:/tmp/pycore.1/n2.conf/heartbeat.c
+//  sudo docker cp heartbeat.c core:/tmp/pycore.1/n3.conf/heartbeat.c
+//  sudo docker cp raw.h core:/tmp/pycore.1/n3.conf/raw.h
+//  sudo docker cp raw.h core:/tmp/pycore.1/n2.conf/raw.h
+//  sudo docker cp raw.h core:/tmp/pycore.1/n1.conf/raw.h

@@ -39,59 +39,6 @@ void addNewHost(char *hostName, char *mac)
 	len_hosts++;
 }
 
-void *recvRaw(void *param)
-{
-	struct ifreq ifopts;
-	int sockfd;
-
-	uint8_t raw_buffer[ETH_LEN];
-	struct eth_frame_s *raw = (struct eth_frame_s *)&raw_buffer;
-
-	/* Open RAW socket */
-	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
-		perror("socket");
-
-	/* Set interface to promiscuous mode */
-	strncpy(ifopts.ifr_name, ifName, IFNAMSIZ - 1);
-	ioctl(sockfd, SIOCGIFFLAGS, &ifopts);
-	ifopts.ifr_flags |= IFF_PROMISC;
-	ioctl(sockfd, SIOCSIFFLAGS, &ifopts);
-
-	/* End of configuration. Now we can receive data using raw sockets. */
-	while (1)
-	{
-		recvfrom(sockfd, raw_buffer, ETH_LEN, 0, NULL, NULL);
-		
-		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
-		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && memcmp(raw->ethernet.src_addr, this_mac, sizeof(this_mac)) != 0)
-		{
-			if (raw->pulse.type == TYPE_TALK)
-			{
-				printf("Talk from %s: %s\n", raw->pulse.hostname, raw->pulse.talk_msg);
-			}
-			else if (raw->pulse.type == TYPE_HEARTBEAT)
-			{
-				int h_index = -1;
-				for (int i = 0; i < len_hosts; i++)
-				{
-					if (strncmp(arr_hosts[i].hostname, raw->pulse.hostname, sizeof(raw->pulse.hostname)) == 0)
-					{
-						time(&arr_hosts[i].last_beat);
-						h_index = i;
-						break;
-					}
-				}
-
-				// Se recebeu um heartbeat e nao achou na tabela atual, significa que o host atual foi iniciado depois da msg
-				// de start do host que enviou este heartbeat, entao devemos adiciona-lo a tabela de hosts.
-				if (h_index < 0)
-					addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
-			}
-			else // adiciona o novo host no array (START)
-				addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
-		}
-	}
-}
 
 int sendRaw(char type, char *data, char *dst)
 {
@@ -150,6 +97,64 @@ int sendRaw(char type, char *data, char *dst)
 	return 0;
 }
 
+
+void *recvRaw(void *param)
+{
+	struct ifreq ifopts;
+	int sockfd;
+
+	uint8_t raw_buffer[ETH_LEN];
+	struct eth_frame_s *raw = (struct eth_frame_s *)&raw_buffer;
+
+	/* Open RAW socket */
+	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
+		perror("socket");
+
+	/* Set interface to promiscuous mode */
+	strncpy(ifopts.ifr_name, ifName, IFNAMSIZ - 1);
+	ioctl(sockfd, SIOCGIFFLAGS, &ifopts);
+	ifopts.ifr_flags |= IFF_PROMISC;
+	ioctl(sockfd, SIOCSIFFLAGS, &ifopts);
+
+	/* End of configuration. Now we can receive data using raw sockets. */
+	while (1)
+	{
+		recvfrom(sockfd, raw_buffer, ETH_LEN, 0, NULL, NULL);
+
+		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
+		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && memcmp(raw->ethernet.src_addr, this_mac, sizeof(this_mac)) != 0)
+		{
+			if (raw->pulse.type == TYPE_TALK)
+			{
+				printf("Talk from %s: %s\n", raw->pulse.hostname, raw->pulse.talk_msg);
+			}
+			else if (raw->pulse.type == TYPE_HEARTBEAT)
+			{
+				int h_index = -1;
+				for (int i = 0; i < len_hosts; i++)
+				{
+					if (strncmp(arr_hosts[i].hostname, raw->pulse.hostname, sizeof(raw->pulse.hostname)) == 0)
+					{
+						time(&arr_hosts[i].last_beat);
+						h_index = i;
+						break;
+					}
+				}
+
+				// Se recebeu um heartbeat e nao achou na tabela atual, significa que o host atual foi iniciado depois da msg
+				// de start do host que enviou este heartbeat, entao devemos adiciona-lo a tabela de hosts.
+				if (h_index < 0)
+					addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
+			}
+			else // adiciona o novo host no array (START)
+			{
+				addNewHost(raw->pulse.hostname, raw->ethernet.src_addr);
+				sendRaw(TYPE_HEARTBEAT, NULL, raw->ethernet.src_addr);
+			} 
+		}
+	}
+}
+
 int sendStart()
 {
 	return sendRaw(TYPE_START, NULL, bcast_mac);
@@ -175,13 +180,14 @@ void startHeartbeat()
 }
 
 void getHostsList()
-{	
+{
 	time_t c_time;
 	printf("------ LIST DE HOSTS ATIVOS ------\n");
 	for (int i = 0; i < len_hosts; i++)
 	{
 		time(&c_time);
-		if(difftime(c_time, arr_hosts[i].last_beat) <= 15){
+		if (difftime(c_time, arr_hosts[i].last_beat) <= 15)
+		{
 			printf("%s | %s\n", arr_hosts[i].hostname, ctime(&arr_hosts[i].last_beat));
 		}
 	}
@@ -194,7 +200,7 @@ char *searchDestAddr(char *nome)
 	for (int i = 0; i < len_hosts; i++)
 	{
 		time(&c_time);
-		if ( difftime(c_time, arr_hosts[i].last_beat) <= 15 && strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
+		if (difftime(c_time, arr_hosts[i].last_beat) <= 15 && strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
 		{
 			return arr_hosts[i].mac_addr;
 		}

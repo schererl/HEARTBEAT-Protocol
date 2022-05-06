@@ -219,7 +219,7 @@ void waitingInput()
 		if (strcmp(opt, "talk") == 0)
 		{
 			char dst[16];
-			printf("Digite o nome do destino.\n");
+			// printf("Digite o nome do destino.\n");
 			scanf("%s", dst);
 
 			char *addrDest = searchDestAddr(dst);
@@ -231,8 +231,8 @@ void waitingInput()
 			}
 
 			char buff[32];
-			printf("Digite sua mensagem.\n");
-			scanf("%s", buff);
+			// printf("Digite sua mensagem.\n");
+			scanf("%[A-Z a-z]", buff);
 
 			sendTalk(buff, addrDest);
 		}

@@ -124,7 +124,7 @@ void *recvRaw(void *param)
 		// Analisa o pacote se for do tipo do nosso protocolo e tiver vindo de outro host (nao processa o prorio pacote)
 		if (raw->ethernet.eth_type == ntohs(ETHER_TYPE) && memcmp(raw->ethernet.src_addr, this_mac, sizeof(this_mac)) != 0)
 		{
-			if (raw->heartbeat.type == TYPE_TALK)
+			if (raw->heartbeat.type == TYPE_TALK && memcmp(raw->ethernet.dst_addr, this_mac, sizeof(this_mac)) == 0)
 			{
 				printf("Talk from %s: %s\n", raw->heartbeat.hostname, raw->heartbeat.talk_msg);
 			}
@@ -200,12 +200,12 @@ char *searchDestAddr(char *nome)
 	for (int i = 0; i < len_hosts; i++)
 	{
 		time(&c_time);
-		if (difftime(c_time, arr_hosts[i].last_beat) <= 15 && strncmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
+		
+		if (difftime(c_time, arr_hosts[i].last_beat) <= 15 && memcmp(arr_hosts[i].hostname, nome, sizeof(arr_hosts[i].hostname)) == 0)
 		{
 			return arr_hosts[i].mac_addr;
 		}
 	}
-
 	return NULL;
 }
 
